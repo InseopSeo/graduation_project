@@ -5,7 +5,7 @@ import torch
 
 from config import GPU_DEMAND_CSV_PATH, EnvConfig, PPOConfig, get_model_path
 from envs.gpu_capacity_env import GpuCapacityEnv
-from rl.ppo_agent import PPOAgent
+from RL.ppo_agent import PPOAgent
 
 
 def main():
