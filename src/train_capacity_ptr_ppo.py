@@ -1,13 +1,13 @@
-# src/train_capacity_ppo.py
+# src/train_capacity_ptr_ppo.py
 
 import csv
-import pandas as pd
 import numpy as np
+import pandas as pd
 import torch
 
 from config import GPU_DEMAND_CSV_PATH, PROJECT_ROOT, EnvConfig, PPOConfig, get_model_path
 from envs.gpu_capacity_env import GpuCapacityEnv
-from RL.ppo_agent import PPOAgent
+from RL.ptr_ppo_agent import PTRPPOAgent
 
 
 def main():
@@ -30,8 +30,8 @@ def main():
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.n
 
-    # 3) PPO 에이전트 생성
-    agent = PPOAgent(
+    # 3) PTR-PPO 에이전트 생성
+    agent = PTRPPOAgent(
         state_dim=state_dim,
         action_dim=action_dim,
         gamma=ppo_cfg.gamma,
@@ -41,10 +41,15 @@ def main():
         update_epochs=ppo_cfg.update_epochs,
         batch_size=ppo_cfg.batch_size,
         device=ppo_cfg.device,
+        # replay buffer parameters
+        buffer_capacity=128,
+        replay_k=4,
+        alpha=0.6,
+        iw_clip=3.0,
     )
 
     # 4) 로그 파일 준비
-    log_path = PROJECT_ROOT / "logs" / "ppo_train_log.csv"
+    log_path = PROJECT_ROOT / "logs" / "ptr_ppo_train_log.csv"
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(log_path, "w", newline="") as f:
@@ -67,26 +72,33 @@ def main():
                 rewards, dones, values, last_value
             )
 
-            agent.ppo_update(
-                states,
-                actions,
-                log_probs_old,
-                returns,
-                advantages,
-            )
+            on_policy_traj = {
+                "states": states,
+                "actions": actions,
+                "log_probs": log_probs_old,
+                "returns": returns,
+                "advantages": advantages,
+            }
+
+            # 새 trajectory를 버퍼에 추가 (초기 priority = mean(|A|))
+            init_prio = float(np.mean(np.abs(advantages)))
+            agent.replay_buffer.add(on_policy_traj, init_prio)
+
+            # PTR-PPO 업데이트
+            agent.update_with_replay(on_policy_traj)
 
             # 로그용 통계 (현재는 avg_reward만 진행, shortage/idle은 0.0으로 placeholder)
             avg_reward = rewards.mean()
-            mean_shortage = 0.0 # rollout에서 shortage/idle 모으고 싶으면 추후 수정
+            mean_shortage = 0.0  # rollout에서 shortage/idle 모으고 싶으면 추후 수정
             mean_idle = 0.0
 
-            print(f"[PPO Iter {it:03d}] avg_reward = {avg_reward:.3f}")
+            print(f"[PTR-PPO Iter {it:03d}] avg_reward = {avg_reward:.3f}")
             writer.writerow([it, avg_reward, mean_shortage, mean_idle])
 
     # 6) 학습 종료 & 최종 모델 저장
-    save_path = get_model_path("ppo_capacity.pt")
+    save_path = get_model_path("ptr_ppo_capacity.pt")
     torch.save(agent.net.state_dict(), save_path)
-    print(f"[INFO] Saved PPO model to {save_path}")
+    print(f"[INFO] Saved PTR-PPO model to {save_path}")
 
 
 if __name__ == "__main__":

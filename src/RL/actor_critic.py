@@ -1,3 +1,5 @@
+# src/RL/actor_critic.py
+
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
@@ -37,3 +39,17 @@ class ActorCritic(nn.Module):
         log_prob = dist.log_prob(action)
 
         return action.item(), log_prob.squeeze(0), value.squeeze(0)
+
+    def act_greedy(self, state):
+        """
+        평가용
+        확률 샘플링 대신 argmax 기반으로 행동 선택
+        """
+        if state.dim() == 1:
+            state = state.unsqueeze(0)
+
+        logits, value = self.forward(state)
+        probs = torch.softmax(logits, dim=-1)
+        action = torch.argmax(probs, dim=-1)
+        
+        return action.item(), value.squeeze(0)
