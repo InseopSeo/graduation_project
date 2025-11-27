@@ -14,7 +14,7 @@ pip install -r requirements.txt
 python -m src.preprocess.build_gpu_demand
 ```
 
-raw trace(`data/raw/disaggregated_DLRM_trace.csv`)를 읽어서 10분 bin 단위의 GPU 수요(`data/processed/gpu_demand_@min.csv`)를 생성합니다.
+raw trace(`data/raw/disaggregated_DLRM_trace.csv`)를 읽어서 X초(또는 분) 단위의 GPU 수요(`data/processed/gpu_demand_Xsec(min).csv`)를 생성합니다.
 
 ## PPO 학습 실행
 
