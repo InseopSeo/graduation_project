@@ -1,4 +1,5 @@
 # src/plot_learning_curves.py
+# 학습 곡선 비교 플롯 생성
 
 import pandas as pd
 import matplotlib.pyplot as plt
