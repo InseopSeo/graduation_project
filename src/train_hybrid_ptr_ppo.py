@@ -15,6 +15,7 @@ from config import (
 from envs.gpu_capacity_env import GpuCapacityEnv
 from RL.ptr_ppo_agent import PTRPPOAgent
 from forecasting.models import ForecastModelConfig, DemandLSTM
+from forecasting.train_forecast import TrainForecastConfig, train_forecast
 
 
 def load_forecast_model(device: str = "cpu") -> torch.nn.Module:
@@ -23,6 +24,20 @@ def load_forecast_model(device: str = "cpu") -> torch.nn.Module:
     - config의 hidden_size, num_layers, forecast_horizon은
       train_forecast.py에서 쓴 값과 동일해야 함.
     """
+
+    ckpt_path = PROJECT_ROOT / "models" / "forecast_lstm.pt"
+
+    if not ckpt_path.exists():
+        print("[INFO] forecast_lstm.pt not found. Training forecast model first...")
+        fcfg = TrainForecastConfig(
+            device=device,
+            model_type="LSTM",
+        )
+        ckpt_path = train_forecast(fcfg)
+    else:
+        print(f"[INFO] Found existing forecast model: {ckpt_path}")
+
+    
     model_cfg = ForecastModelConfig(
         input_size=1,
         hidden_size=64,
@@ -30,12 +45,12 @@ def load_forecast_model(device: str = "cpu") -> torch.nn.Module:
         dropout=0.1,
         forecast_horizon=1,
     )
-    model = DemandLSTM(model_cfg).to(device)
 
-    ckpt_path = PROJECT_ROOT / "models" / "forecast_lstm.pt"
+    model = DemandLSTM(model_cfg).to(device)
     state = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(state)
     model.eval()
+
     print(f"[INFO] Loaded forecast model from {ckpt_path}")
     return model
 
@@ -86,7 +101,7 @@ def main():
     )
 
     # 5) 로그 파일 준비
-    log_path = PROJECT_ROOT / "logs" / "ptr_hybrid_ppo_train_log.csv"
+    log_path = PROJECT_ROOT / "logs" / "ptr_hybrid_ptr_ppo_train_log.csv"
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(log_path, "w", newline="") as f:

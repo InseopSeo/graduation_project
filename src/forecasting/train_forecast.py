@@ -33,7 +33,7 @@ from config import GPU_DEMAND_CSV_PATH, PROJECT_ROOT
 # -----------------------------
 @dataclass
 class TrainForecastConfig:
-    input_window: int = 24             # 입력 시퀀스 길이
+    input_window: int = 10             # 입력 시퀀스 길이
     forecast_horizon: int = 1          # 예측 시점 수
     batch_size: int = 64
     num_epochs: int = 20
@@ -115,7 +115,7 @@ def evaluate(model, loader, criterion, device):
 # -----------------------------
 # 메인 학습 프로세스
 # -----------------------------
-def main():
+def train_forecast(cfg: TrainForecastConfig) -> Path:
     cfg = TrainForecastConfig()
 
     print(f"[INFO] Device: {cfg.device}")
@@ -200,6 +200,11 @@ def main():
     print(f"[INFO] Saved best model to {save_path}")
     print(f"[INFO] Best RMSE: {best_val_rmse:.3f}")
 
+    return save_path
+
+def main():
+    cfg = TrainForecastConfig()
+    train_forecast(cfg)
 
 if __name__ == "__main__":
     main()

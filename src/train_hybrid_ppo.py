@@ -1,5 +1,6 @@
 # src/train_hybrid_ppo.py
 
+import csv
 import numpy as np
 import pandas as pd
 import torch
@@ -14,6 +15,7 @@ from config import (
 from envs.gpu_capacity_env import GpuCapacityEnv
 from RL.ppo_agent import PPOAgent
 from forecasting.models import ForecastModelConfig, DemandLSTM
+from forecasting.train_forecast import TrainForecastConfig, train_forecast
 
 
 def load_forecast_model(device: str = "cpu") -> torch.nn.Module:
@@ -22,6 +24,21 @@ def load_forecast_model(device: str = "cpu") -> torch.nn.Module:
     - config의 hidden_size, num_layers, forecast_horizon은
       train_forecast.py에서 쓴 값과 동일해야 함.
     """
+
+
+    ckpt_path = PROJECT_ROOT / "models" / "forecast_lstm.pt"
+
+    if not ckpt_path.exists():
+        print("[INFO] forecast_lstm.pt not found. Training forecast model first...")
+        fcfg = TrainForecastConfig(
+            device=device,
+            model_type="LSTM",
+        )
+        ckpt_path = train_forecast(fcfg)
+    else:
+        print(f"[INFO] Found existing forecast model: {ckpt_path}")
+
+
     model_cfg = ForecastModelConfig(
         input_size=1,
         hidden_size=64,
@@ -30,11 +47,10 @@ def load_forecast_model(device: str = "cpu") -> torch.nn.Module:
         forecast_horizon=1,
     )
     model = DemandLSTM(model_cfg).to(device)
-
-    ckpt_path = PROJECT_ROOT / "models" / "forecast_lstm.pt"
     state = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(state)
     model.eval()
+    
     print(f"[INFO] Loaded forecast model from {ckpt_path}")
     return model
 
@@ -80,34 +96,46 @@ def main():
         device=device,
     )
 
-    # 5) 학습 루프
-    for it in range(ppo_cfg.num_iterations):
-        (
-            states,
-            actions,
-            rewards,
-            dones,
-            log_probs_old,
-            values,
-            last_value,
-        ) = agent.rollout(env, horizon=ppo_cfg.horizon)
+    # 5) 로그 파일 준비
+    log_path = PROJECT_ROOT / "logs" / "hybrid_ppo_train_log.csv"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        advantages, returns = agent.compute_gae(
-            rewards, dones, values, last_value
-        )
+    with open(log_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["iter", "avg_reward", "mean_shortage", "mean_idle"])
 
-        agent.ppo_update(
-            states,
-            actions,
-            log_probs_old,
-            returns,
-            advantages,
-        )
+        # 6) 학습 루프
+        for it in range(ppo_cfg.num_iterations):
+            (
+                states,
+                actions,
+                rewards,
+                dones,
+                log_probs_old,
+                values,
+                last_value,
+            ) = agent.rollout(env, horizon=ppo_cfg.horizon)
 
-        avg_reward = rewards.mean()
-        print(f"[Hybrid PPO Iter {it:03d}] avg_reward = {avg_reward:.3f}")
+            advantages, returns = agent.compute_gae(
+                rewards, dones, values, last_value
+            )
 
-    # 6) 모델 저장
+            agent.ppo_update(
+                states,
+                actions,
+                log_probs_old,
+                returns,
+                advantages,
+            )
+
+            avg_reward = rewards.mean()
+            mean_shortage = 0.0  # 필요 시 env.step info 수집하여 갱신
+            mean_idle = 0.0
+
+            print(f"[Hybrid PPO Iter {it:03d}] avg_reward = {avg_reward:.3f}")
+            writer.writerow([it, avg_reward, mean_shortage, mean_idle])
+
+    # 7) 모델 저장
     save_path = get_model_path("ppo_hybrid_capacity.pt")
     torch.save(agent.net.state_dict(), save_path)
     print(f"[INFO] Saved Hybrid PPO model to {save_path}")
