@@ -19,7 +19,19 @@ raw trace(`data/raw/disaggregated_DLRM_trace.csv`)를 읽어서 X초(또는 분)
 ## PPO 학습 실행
 
 ```bash
-python src/train_capacity_ppo.py
+python src/train_capacity_ppo.py # PPO + LSTM X
 ```
 
+```bash
+python src/train_capacity_ptr_ppo.py # PTR-PPO + LSTM X
+```
+
+```bash
+python src/train_hybrid_ppo.py # PPO + LSTM O
+```
+
+```bash
+python src/train_hybrid_ptr_ppo.py # PTR-PPO + LSTM O
+```
+  
 `src/config.py`에서 환경/학습 하이퍼파라미터와 경로를 통일적으로 관리합니다.
