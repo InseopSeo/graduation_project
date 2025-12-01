@@ -53,7 +53,7 @@ class PPOConfig:
     update_epochs: int = 10
     batch_size: int = 32
     horizon: int = 128        # rollout 길이
-    num_iterations: int = 200   # 학습 반복 수
+    num_iterations: int = 100   # 학습 반복 수
     device: str = "cpu"
     seed: int = 42
 
