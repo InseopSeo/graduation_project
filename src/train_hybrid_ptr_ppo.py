@@ -101,7 +101,7 @@ def main():
     )
 
     # 5) 로그 파일 준비
-    log_path = PROJECT_ROOT / "logs" / "ptr_hybrid_ptr_ppo_train_log.csv"
+    log_path = PROJECT_ROOT / "logs" / "hybrid_ptr_ppo_train_log.csv"
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(log_path, "w", newline="") as f:

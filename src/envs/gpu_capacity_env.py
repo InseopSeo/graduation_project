@@ -18,6 +18,7 @@ class GpuCapacityEnv(gym.Env):
         capacity_levels=None,
         shortage_penalty: float = 2.0,
         idle_penalty: float = 1.0,
+        is_train=True,
         
         # 추가: 예측 모델 관련
         forecast_model: torch.nn.Module | None = None,
@@ -30,6 +31,8 @@ class GpuCapacityEnv(gym.Env):
         self.shortage_penalty = shortage_penalty
         self.idle_penalty = idle_penalty
         self.max_demand = float(np.max(self.gpu_demand))
+
+        self.is_train = is_train
 
         if capacity_levels is None:
             levels = np.linspace(0.1, 1.0, 10, dtype=np.float32)
@@ -52,7 +55,8 @@ class GpuCapacityEnv(gym.Env):
             self.forecast_device = "cpu"
             self.forecast_horizon = 0
 
-        self.T = 0
+        self.T = len(self.gpu_demand)
+        self.current_step = self.window_size
         self._build_spaces()
 
 
@@ -75,8 +79,9 @@ class GpuCapacityEnv(gym.Env):
         - 기본: 최근 window_size 길이의 demand (정규화)
         - LSTM + PPO : + 예측된 다음 demand (정규화)
         """
-        start = max(0, self.T - self.window_size + 1)
-        end = self.T + 1
+        end = self.current_step
+        start = max(0, end - self.window_size)
+
         window = self.gpu_demand[start:end]
 
         # 초기 구간 채우기
@@ -84,7 +89,7 @@ class GpuCapacityEnv(gym.Env):
             pad = np.full(self.window_size - len(window), window[0], dtype=np.float32)
             window = np.concatenate([pad, window], axis=0)
 
-        # 간단히 max_demand로 나눠서 0~1 스케일
+        # max_demand로 나눠서 0~1 스케일
         window_norm = window / (self.max_demand + 1e-8)   # shape (window_size,)
 
         if not self.use_forecast:
@@ -94,6 +99,7 @@ class GpuCapacityEnv(gym.Env):
         with torch.no_grad():
             x = torch.tensor(window_norm, dtype=torch.float32, device=self.forecast_device)
             x = x.view(1, -1, 1)  # (B=1, L=window_size, 1)
+
             y_hat = self.forecast_model(x)  # (1, forecast_horizon)
             pred_next = y_hat[0, 0].item()  # 하나만 쓴다고 가정
 
@@ -101,12 +107,20 @@ class GpuCapacityEnv(gym.Env):
         pred_vec = np.array([pred_next], dtype=np.float32)
 
         state = np.concatenate([window_norm, pred_vec], axis=0)  # (window_size+1,)
+
         return state.astype(np.float32)
     
 
     def reset(self):
-        # window_size 이후 시점에서 시작
-        self.current_step = self.window_size
+        if self.is_train:
+            if self.T <= self.window_size + 200:
+                 self.current_step = self.window_size
+            else:
+                safe_margin = 200 
+                self.current_step = np.random.randint(self.window_size, self.T - safe_margin)
+        else:
+            self.current_step = self.window_size
+
         return self._get_state()
 
     def step(self, action):
@@ -119,13 +133,14 @@ class GpuCapacityEnv(gym.Env):
         reward = -(
             self.shortage_penalty * shortage
             + self.idle_penalty * idle
-        )
+        ) * 0.1
 
         self.current_step += 1
-        done = self.current_step >= self.T
+        done = self.current_step >= self.T - 1
 
         if done:
-            next_state = np.zeros(self.window_size, dtype=np.float32)
+            obs_dim = self.observation_space.shape[0]
+            next_state = np.zeros(obs_dim, dtype=np.float32)
         else:
             next_state = self._get_state()
 
